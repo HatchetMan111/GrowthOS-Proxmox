@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Pläne – growthOS{% endblock %}
+{% block content %}
+<h1>Pläne</h1>
+<p class="subtitle">Ein Plan ist ein konkreter Schritt-für-Schritt-Verkaufsplan, generiert aus deinem Firmenprofil.</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="post" action="/plans/generate" class="panel">
+  <label for="persona_id">Welche Rolle soll den Plan erstellen?</label>
+  <select id="persona_id" name="persona_id" required>
+    {% for p in personas %}
+      <option value="{{ p.id }}" {{ 'selected' if p.name == 'Stratege' else '' }}>{{ p.name }}</option>
+    {% endfor %}
+  </select>
+
+  <label for="title">Titel (optional)</label>
+  <input type="text" id="title" name="title" placeholder="z. B. Q1-Verkaufsplan">
+
+  <button type="submit">Plan erstellen</button>
+  <p class="hint">Das kann je nach Modell 10–60 Sekunden dauern.</p>
+</form>
+
+<h2>Bisherige Pläne</h2>
+<div class="panel">
+  {% if plans %}
+    {% for p in plans %}
+    <div class="list-item">
+      <div>
+        <a href="/plans/{{ p.id }}">{{ p.title }}</a>
+        <div class="meta">{{ p.created_at[:16] | replace("T", " ") }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="subtitle" style="margin:0">Noch keine Pläne erstellt.</p>
+  {% endif %}
+</div>
+{% endblock %}

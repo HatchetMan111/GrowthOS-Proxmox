@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Ideen – growthOS{% endblock %}
+{% block content %}
+<h1>Ideen</h1>
+<p class="subtitle">Schnelle, konkrete Vorschläge auf Zuruf – kein vollständiger Plan.</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="post" action="/ideas/generate" class="panel">
+  <label for="persona_id">Rolle</label>
+  <select id="persona_id" name="persona_id" required>
+    {% for p in personas %}
+      <option value="{{ p.id }}">{{ p.name }}</option>
+    {% endfor %}
+  </select>
+
+  <label for="prompt">Worum geht's?</label>
+  <textarea id="prompt" name="prompt" placeholder="z. B. Ideen für den nächsten LinkedIn-Post" required></textarea>
+
+  <button type="submit">Ideen generieren</button>
+</form>
+
+<h2>Verlauf</h2>
+<div class="panel">
+  {% if ideas %}
+    {% for i in ideas %}
+    <div class="list-item" style="flex-direction:column; align-items:stretch">
+      <div class="meta">{{ i.created_at[:16] | replace("T", " ") }} – „{{ i.prompt }}"</div>
+      <p style="white-space:pre-wrap; margin:6px 0 0 0">{{ i.content }}</p>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="subtitle" style="margin:0">Noch keine Ideen generiert.</p>
+  {% endif %}
+</div>
+{% endblock %}

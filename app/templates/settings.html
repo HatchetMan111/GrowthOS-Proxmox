@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Einstellungen – growthOS{% endblock %}
+{% block content %}
+<h1>Einstellungen</h1>
+<p class="subtitle">Anbindung an OpenRouter, Omniroute oder einen anderen OpenAI-kompatiblen Modell-Router.</p>
+
+{% if saved %}<div class="flash">Gespeichert.</div>{% endif %}
+
+<form method="post" action="/settings" class="panel">
+  <label for="base_url">API-Basis-URL</label>
+  <input type="text" id="base_url" name="base_url" value="{{ base_url }}" required>
+  <p class="hint">Standard: <code>https://openrouter.ai/api/v1</code>. Für Omniroute oder einen anderen Anbieter die jeweilige OpenAI-kompatible Basis-URL eintragen.</p>
+
+  <label for="api_key">API-Key {% if has_key %}(aktuell hinterlegt: <code>{{ api_key_masked }}</code>, nur bei Änderung neu eingeben){% endif %}</label>
+  <input type="password" id="api_key" name="api_key" placeholder="{{ 'unverändert lassen = leer' if has_key else 'sk-or-...' }}">
+
+  <label for="daily_token_cap">Tages-Token-Limit (0 = kein Limit)</label>
+  <input type="number" id="daily_token_cap" name="daily_token_cap" value="{{ daily_token_cap }}" min="0">
+  <p class="hint">Heute bereits genutzt: {{ tokens_today }} Tokens. Sobald das Limit erreicht ist, werden neue Anfragen blockiert statt Kosten weiter zu verursachen.</p>
+
+  <label for="max_tokens_per_request">Maximale Tokens pro einzelner Anfrage</label>
+  <input type="number" id="max_tokens_per_request" name="max_tokens_per_request" value="{{ max_tokens_per_request }}" min="100">
+  <p class="hint">Begrenzt die Antwortlänge (und damit Kosten) einer einzelnen Plan- oder Ideen-Generierung.</p>
+
+  <button type="submit">Speichern</button>
+</form>
+
+<h2>Wichtig zum Datenfluss</h2>
+<div class="panel">
+  <p class="hint" style="font-size:14px">
+    growthOS läuft lokal in deiner LXC. Die Inhalte deiner Prompts – inklusive Firmenprofil,
+    Zielgruppen- und Strategiedaten – werden bei jeder Generierung trotzdem an die oben
+    konfigurierte API (OpenRouter/Omniroute und von dort an den jeweiligen Modell-Anbieter)
+    übertragen. „Lokal gehostet" bezieht sich auf die Infrastruktur, nicht auf den Inhalt der
+    KI-Anfragen.
+  </p>
+</div>
+{% endblock %}

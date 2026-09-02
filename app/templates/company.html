@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Firmenprofil – growthOS{% endblock %}
+{% block content %}
+<h1>Firmenprofil</h1>
+<p class="subtitle">Diese Angaben fließen in jede Plan- und Ideen-Generierung ein.</p>
+
+{% if request.query_params.get('saved') %}<div class="flash">Gespeichert.</div>{% endif %}
+
+<form method="post" action="/company" class="panel">
+  <label for="product">Produkt / Dienstleistung</label>
+  <textarea id="product" name="product" placeholder="Was verkauft ihr genau?">{{ company.product or '' }}</textarea>
+
+  <label for="goal">Ziel</label>
+  <textarea id="goal" name="goal" placeholder="z. B. in 6 Monaten 50 zahlende Kunden gewinnen">{{ company.goal or '' }}</textarea>
+
+  <label for="current_state">Aktueller Stand</label>
+  <textarea id="current_state" name="current_state" placeholder="Bestehende Kanäle, bisherige Kampagnen, Team-Kapazität">{{ company.current_state or '' }}</textarea>
+
+  <label for="target_audience">Zielgruppe</label>
+  <textarea id="target_audience" name="target_audience" placeholder="Wer kauft, welche Painpoints, wie kaufen sie">{{ company.target_audience or '' }}</textarea>
+
+  <label for="competitors">Wettbewerber</label>
+  <textarea id="competitors" name="competitors">{{ company.competitors or '' }}</textarea>
+
+  <label for="tone">Tonalität / Branding</label>
+  <textarea id="tone" name="tone" placeholder="z. B. locker und direkt, oder seriös und fachlich">{{ company.tone or '' }}</textarea>
+
+  <button type="submit">Speichern</button>
+</form>
+{% endblock %}

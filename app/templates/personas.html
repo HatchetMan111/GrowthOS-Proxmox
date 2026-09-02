@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}KI-Rollen – growthOS{% endblock %}
+{% block content %}
+<h1>KI-Rollen</h1>
+<p class="subtitle">Jede Rolle ist ein eigener System-Prompt plus Modellwahl. Sechs sind vorkonfiguriert, du kannst beliebig weitere anlegen oder anpassen.</p>
+
+<div class="panel">
+  {% for p in personas %}
+  <div class="list-item">
+    <div>
+      <strong>{{ p.name }}</strong>
+      {% if p.description %}<div class="meta">{{ p.description }}</div>{% endif %}
+      <div class="meta">Modell: <code>{{ p.model }}</code></div>
+    </div>
+    <form method="post" action="/personas/{{ p.id }}/delete" onsubmit="return confirm('Rolle wirklich löschen?')">
+      <button type="submit" class="btn-danger">Löschen</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+<h2>Neue Rolle anlegen</h2>
+<form method="post" action="/personas" class="panel">
+  <label for="name">Name</label>
+  <input type="text" id="name" name="name" placeholder="z. B. Community Manager" required>
+
+  <label for="description">Kurzbeschreibung</label>
+  <input type="text" id="description" name="description" placeholder="Wofür ist diese Rolle da?">
+
+  <label for="system_prompt">System-Prompt</label>
+  <textarea id="system_prompt" name="system_prompt" placeholder="Du bist ..." required style="min-height:120px"></textarea>
+
+  <label for="model">Modell (OpenRouter/Omniroute-Modellkennung)</label>
+  <input type="text" id="model" name="model" value="openrouter/auto" placeholder="z. B. anthropic/claude-sonnet-4.6">
+  <p class="hint">Bei <code>openrouter/auto</code> wählt OpenRouter automatisch ein passendes Modell. Für konsistentere Ergebnisse ein festes Modell eintragen.</p>
+
+  <button type="submit">Rolle anlegen</button>
+</form>
+{% endblock %}

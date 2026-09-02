@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.title }} – growthOS{% endblock %}
+{% block content %}
+<h1>{{ plan.title }}</h1>
+<p class="subtitle">Erstellt am {{ plan.created_at[:16] | replace("T", " ") }}</p>
+
+<div class="panel">
+  {% for s in steps %}
+  <div class="step {{ 'done' if s.done else '' }}">
+    <form method="post" action="/plans/{{ plan.id }}/steps/{{ s.id }}/toggle">
+      <button type="submit" class="checkbox-btn" aria-label="Schritt erledigt markieren"></button>
+    </form>
+    <div>
+      <span class="step-num">{{ loop.index }}</span>
+      <p class="step-title">{{ s.title }}</p>
+      <p class="step-desc">{{ s.description }}</p>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<a href="/plans" class="btn btn-secondary">Zurück zur Übersicht</a>
+{% endblock %}

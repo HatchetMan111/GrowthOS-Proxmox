@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}growthOS{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar">
+    <div class="brand">growthOS</div>
+    <ul>
+      <li><a href="/" class="{{ 'active' if request.url.path == '/' else '' }}">Übersicht</a></li>
+      <li><a href="/company" class="{{ 'active' if request.url.path == '/company' else '' }}">Firmenprofil</a></li>
+      <li><a href="/personas" class="{{ 'active' if request.url.path == '/personas' else '' }}">KI-Rollen</a></li>
+      <li><a href="/plans" class="{{ 'active' if request.url.path.startswith('/plans') else '' }}">Pläne</a></li>
+      <li><a href="/ideas" class="{{ 'active' if request.url.path == '/ideas' else '' }}">Ideen</a></li>
+      <li><a href="/settings" class="{{ 'active' if request.url.path == '/settings' else '' }}">Einstellungen</a></li>
+    </ul>
+    <a href="/logout" class="logout">Abmelden</a>
+  </nav>
+  <main class="content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

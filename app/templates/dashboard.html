@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Übersicht – growthOS{% endblock %}
+{% block content %}
+<h1>Übersicht</h1>
+<p class="subtitle">Dein Marketing-Arbeitsstand auf einen Blick.</p>
+
+<div class="grid-3">
+  <div class="stat"><span class="num">{{ plan_count }}</span><span class="label">Pläne erstellt</span></div>
+  <div class="stat"><span class="num">{{ persona_count }}</span><span class="label">KI-Rollen konfiguriert</span></div>
+  <div class="stat">
+    <span class="num">{{ tokens_today }}{% if cap > 0 %} / {{ cap }}{% endif %}</span>
+    <span class="label">Tokens heute genutzt{% if cap == 0 %} (kein Limit gesetzt){% endif %}</span>
+  </div>
+</div>
+
+{% if not company.product %}
+<div class="panel">
+  <h2 style="margin-top:0">Noch kein Firmenprofil</h2>
+  <p>Ohne Firmenprofil generieren KI-Rollen nur allgemeine Vorschläge. Leg es jetzt an, dauert etwa fünf Minuten.</p>
+  <a class="btn" href="/company">Firmenprofil anlegen</a>
+</div>
+{% endif %}
+
+<h2>Letzte Pläne</h2>
+<div class="panel">
+  {% if recent_plans %}
+    {% for p in recent_plans %}
+    <div class="list-item">
+      <div>
+        <a href="/plans/{{ p.id }}">{{ p.title }}</a>
+        <div class="meta">{{ p.created_at[:16] | replace("T", " ") }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="subtitle" style="margin:0">Noch keine Pläne erstellt. <a href="/plans">Jetzt ersten Plan erstellen</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

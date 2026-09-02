@@ -1,0 +1,25 @@
+[Unit]
+Description=growthOS - lokales Marketing-Planungstool
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=growthos
+Group=growthos
+WorkingDirectory=/opt/growthos/app
+EnvironmentFile=/opt/growthos/.env
+ExecStart=/opt/growthos/venv/bin/uvicorn main:app --host 0.0.0.0 --port __PORT__
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Kleine Sicherheits-Härtung, ohne die App einzuschränken
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/growthos/app/data
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

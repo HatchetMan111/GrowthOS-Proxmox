@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anmelden – growthOS</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="login-shell">
+  <div class="login-box">
+    <h1>growthOS</h1>
+    <p class="subtitle">Marketing-Planung für dein Unternehmen</p>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="/login">
+      <label for="password">Passwort</label>
+      <input type="password" id="password" name="password" autofocus required>
+      <button type="submit">Anmelden</button>
+    </form>
+  </div>
+</div>
+</body>
+</html>
