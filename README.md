@@ -135,14 +135,20 @@ pct exec 150 -- systemctl restart growthos
 
 Der Installer wurde `bash -n`- und `shellcheck`-geprüft und in einer
 simulierten Proxmox-Umgebung (Fake-`pct`/`pveam`/`pvesh`) end-to-end
-durchgetestet, außerdem auf einem echten Proxmox-Host verifiziert.
+durchgetestet, außerdem mehrfach auf einem echten Proxmox-Host verifiziert.
 Bereits behoben: Verwechslung von Template-/Rootfs-Storage, ein
-Git-Ownership-Konflikt im Update-Modus, sowie ein kurzes DNS-Timing-Problem
-direkt nach dem Container-Start (Container hatte eine IP, aber DNS war noch
-nicht bereit) – dagegen gibt es jetzt eine explizite DNS-Wartephase plus
-automatische Wiederholung beim `git clone`/`git pull`. Bitte trotzdem den
-Lauf aufmerksam beobachten und Fehlermeldungen bei Bedarf melden – die
-vollständige Fehlerkette wird ausgegeben (siehe „Fehlersuche").
+Git-Ownership-Konflikt im Update-Modus, ein DNS-Timing-Problem direkt nach
+dem Container-Start, sowie ein systemd-Fehler beim allerersten Start
+(`ProtectSystem=strict` + `ReadWritePaths` verlangen, dass `app/data`
+schon existiert – wird jetzt vom Installer vorab angelegt statt erst von
+der App selbst). Falls `git clone`/`git pull` mit "could not read Username"
+fehlschlägt, ist das erfahrungsgemäß kein Problem dieses Skripts oder des
+Repos (von mehreren Netzwerken aus erfolgreich gegengetestet), sondern
+deutet auf einen Proxy, eine Firewall oder ein IPv6-Routing-Problem im
+eigenen Netzwerk hin – der Installer gibt bei diesem Fehler jetzt eine
+gezielte Diagnose aus (DNS, Proxy-Variablen, tatsächliche HTTP-Antwort von
+github.com). Bitte trotzdem jeden Lauf aufmerksam beobachten und
+Fehlermeldungen bei Bedarf melden.
 
 ## Architektur
 

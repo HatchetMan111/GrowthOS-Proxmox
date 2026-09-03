@@ -284,6 +284,21 @@ retry_pct_exec() {
   return 0
 }
 
+# Wird aufgerufen, wenn git clone/pull trotz Retries scheitert. Grenzt ein,
+# ob es DNS, ein Proxy oder eine Firewall/ein Filter ist, der github.com
+# abfängt (z.B. "could not read Username" trotz öffentlichem Repo deutet
+# stark auf Letzteres hin, nicht auf ein Problem mit diesem Skript oder Repo).
+diagnose_git_failure() {
+  msg_warn "DNS-Auflösung im Container:"
+  pct exec "${CTID}" -- cat /etc/resolv.conf 2>&1 || true
+  pct exec "${CTID}" -- getent hosts github.com 2>&1 || true
+  msg_warn "Proxy-Umgebungsvariablen im Container (sollten i.d.R. leer sein):"
+  pct exec "${CTID}" -- bash -c 'env | grep -i _proxy || echo "(keine gesetzt)"' 2>&1 || true
+  msg_warn "Tatsächliche HTTP-Antwort von github.com (zeigt, ob ein Proxy/eine Firewall dazwischenhängt):"
+  pct exec "${CTID}" -- curl -sS -o /dev/null -w "HTTP-Status: %{http_code}, tatsächliche Ziel-IP: %{remote_ip}\n" https://github.com 2>&1 || true
+  msg_warn "Falls der HTTP-Status nicht 200/301/302 ist oder die IP nicht zu GitHub gehört: sehr wahrscheinlich ein Proxy/eine Firewall/IPv6-Routing-Problem in deinem Netzwerk, kein Problem des Skripts oder Repos (von einem anderen Netzwerk aus erfolgreich gegengetestet)."
+}
+
 # ---------------------------------------------------------------------------
 # App im Container installieren / aktualisieren
 # ---------------------------------------------------------------------------
@@ -324,24 +339,29 @@ install_app() {
   # kann DNS noch kurz hinterherhinken, selbst wenn apt kurz zuvor schon
   # funktioniert hat (in freier Wildbahn beobachtet: "Could not resolve
   # host: github.com"). 3 Versuche mit 8s Abstand fangen das ab.
+  #
+  # GIT_TERMINAL_PROMPT=0 + credential.helper=: verhindert, dass git bei
+  # einer unerwarteten Server-Antwort (z.B. durch einen Proxy/eine Firewall,
+  # die github.com abfängt) nach Zugangsdaten fragt und dabei ohne Terminal
+  # hängt/kryptisch fehlschlägt -- schlägt stattdessen sofort klar fehl.
   if [[ "${UPDATE_MODE}" -eq 1 ]] && pct exec "${CTID}" -- test -d "/opt/${APP}/.git" &>/dev/null; then
     msg_info "Bestehende Installation gefunden, aktualisiere per 'git pull'..."
     if ! retry_pct_exec 3 8 su -s /bin/bash "${APP}" -c "
-      cd /opt/${APP} && git fetch --quiet && git checkout ${GH_BRANCH} --quiet && git pull --quiet
+      export GIT_TERMINAL_PROMPT=0
+      cd /opt/${APP} && git -c credential.helper= fetch --quiet && git checkout ${GH_BRANCH} --quiet && git -c credential.helper= pull --quiet
     "; then
-      msg_error "git pull ist nach 3 Versuchen fehlgeschlagen. DNS-Diagnose:"
-      pct exec "${CTID}" -- cat /etc/resolv.conf 2>&1 || true
-      pct exec "${CTID}" -- getent hosts github.com 2>&1 || true
+      msg_error "git pull ist nach 3 Versuchen fehlgeschlagen."
+      diagnose_git_failure
       exit 1
     fi
   else
     msg_info "Klone ${GH_REPO} (Branch ${GH_BRANCH})..."
     if ! retry_pct_exec 3 8 su -s /bin/bash "${APP}" -c "
-      git clone --quiet --branch ${GH_BRANCH} ${GH_REPO} /opt/${APP}
+      export GIT_TERMINAL_PROMPT=0
+      git -c credential.helper= clone --quiet --branch ${GH_BRANCH} ${GH_REPO} /opt/${APP}
     "; then
-      msg_error "git clone ist nach 3 Versuchen fehlgeschlagen. DNS-Diagnose:"
-      pct exec "${CTID}" -- cat /etc/resolv.conf 2>&1 || true
-      pct exec "${CTID}" -- getent hosts github.com 2>&1 || true
+      msg_error "git clone ist nach 3 Versuchen fehlgeschlagen."
+      diagnose_git_failure
       exit 1
     fi
   fi
@@ -368,6 +388,14 @@ install_app() {
 
   msg_info "Setze Berechtigungen (Sicherheitsnetz, sollte bereits stimmen)..."
   pct exec "${CTID}" -- bash -c "chown -R ${APP}:${APP} /opt/${APP}"
+
+  msg_info "Lege Datenverzeichnis an (muss vor dem Service-Start existieren)..."
+  # ProtectSystem=strict + ReadWritePaths in der systemd-Unit setzen bei
+  # Start einen Mount-Namespace auf -- dafür MUSS der Pfad schon existieren,
+  # sonst schlägt der Service mit "Failed at step NAMESPACE" fehl (getestet,
+  # echter Bug: die App selbst legt data/ erst beim ersten Start an, aber da
+  # kommt sie dann gar nicht mehr hin).
+  pct exec "${CTID}" -- su -s /bin/bash "${APP}" -c "mkdir -p /opt/${APP}/app/data"
 
   msg_info "Richte systemd-Service ein..."
   pct exec "${CTID}" -- bash -c "
