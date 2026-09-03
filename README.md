@@ -34,21 +34,31 @@ das ist mit der aktuellen Architektur nachrüstbar, aber nicht Teil des MVP.
 
 ## Einmalig: Code in dein eigenes Repo bringen
 
+Falls du dieses Repo forkst/umbenennst, ersetze `HatchetMan111/GrowthOS-Proxmox`
+unten überall durch deinen eigenen Pfad. **Wichtig:** nie `<` oder `>` als
+Platzhalter-Klammern in Shell-Befehlen verwenden – das sind Sonderzeichen für
+Ein-/Ausgabe-Umleitung und die Kommandos brechen dann mit einem kryptischen
+Fehler ab (`-bash: DEIN-USER: No such file or directory`).
+
 ```bash
 cd growthos               # dieser entpackte Ordner
 git init -b main           # falls noch kein Git-Repo
 git add -A
 git commit -m "Initial commit"
-git remote add origin https://github.com/<DEIN-USER>/growthos.git
+git remote add origin https://github.com/HatchetMan111/GrowthOS-Proxmox.git
 git push -u origin main
 ```
 
 ## Installation (Einzeiler, auf dem Proxmox-Host als root ausführen)
 
 ```bash
-GH_REPO=https://github.com/<DEIN-USER>/growthos.git \
-  bash -c "$(wget -qLO - https://raw.githubusercontent.com/<DEIN-USER>/growthos/main/install/growthos.sh)"
+bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/GrowthOS-Proxmox/main/install/growthos.sh)"
 ```
+
+`GH_REPO` muss dabei nicht extra gesetzt werden, wenn du dieses Repo direkt
+nutzt – das Skript ist bereits darauf vorkonfiguriert. Falls du einen eigenen
+Fork verwendest, zusätzlich `GH_REPO=https://github.com/DEIN-GITHUB-USER/growthos.git`
+voranstellen (ohne spitze Klammern, siehe oben).
 
 Am Ende gibt das Skript die URL des Dashboards, die Container-ID und ein
 automatisch generiertes Admin-Passwort aus (steht auch in
@@ -64,16 +74,26 @@ automatisch generiertes Admin-Passwort aus (steht auch in
 | `CORES` | `2` | vCPUs |
 | `RAM` | `1536` | RAM in MB |
 | `DISK` | `6` | Diskgröße in GB |
-| `STORAGE` | `local-lvm` | Proxmox-Storage für Rootfs + Template |
+| `TEMPLATE_STORAGE` | `local` | Storage für das LXC-Template (muss Content-Type `vztmpl` unterstützen) |
+| `STORAGE` | `local-lvm` | Storage für das Container-Root-Filesystem (muss Content-Type `rootdir` unterstützen) |
 | `BRIDGE` | `vmbr0` | Netzwerk-Bridge |
+| `GH_REPO` | dieses Repo | Eigenes Repo, falls geforkt |
 | `GH_BRANCH` | `main` | Git-Branch |
 | `ADMIN_PASSWORD` | zufällig generiert | Admin-Passwort fest vorgeben statt generieren zu lassen |
+
+`TEMPLATE_STORAGE` und `STORAGE` sind bewusst getrennt: Auf den meisten
+Proxmox-Installationen kann der Storage für Container-Disks (oft `local-lvm`,
+LVM-Thin) keine Templates speichern – das kann nur ein Verzeichnis-Storage
+wie `local`. Das Skript prüft das jetzt selbst vorab anhand von
+`/etc/pve/storage.cfg` und bricht mit einer klaren Meldung ab, falls die
+Zuordnung auf deinem Host anders ist, statt erst mitten im Template-Download
+mit einem kryptischen Proxmox-Fehler zu scheitern.
 
 Beispiel mit mehreren Optionen:
 
 ```bash
-CTID=150 APP_PORT=8080 RAM=2048 GH_REPO=https://github.com/<DEIN-USER>/growthos.git \
-  bash -c "$(wget -qLO - https://raw.githubusercontent.com/<DEIN-USER>/growthos/main/install/growthos.sh)"
+CTID=150 APP_PORT=8080 RAM=2048 \
+  bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/GrowthOS-Proxmox/main/install/growthos.sh)"
 ```
 
 ## Update
@@ -83,32 +103,33 @@ Installation und macht `git pull` + Dependency-Update + Neustart statt
 neu anzulegen (idempotent):
 
 ```bash
-CTID=150 GH_REPO=https://github.com/<DEIN-USER>/growthos.git \
-  bash -c "$(wget -qLO - https://raw.githubusercontent.com/<DEIN-USER>/growthos/main/install/growthos.sh)"
+CTID=150 bash -c "$(wget -qLO - https://raw.githubusercontent.com/HatchetMan111/GrowthOS-Proxmox/main/install/growthos.sh)"
 ```
 
 ## Deinstallation
 
+Ersetze `150` durch deine tatsächliche Container-ID:
+
 ```bash
-pct stop <CTID>
-pct destroy <CTID>
+pct stop 150
+pct destroy 150
 ```
 
 ## Passwort ändern
 
-Auf der LXC:
+Auf der LXC (`150` durch deine Container-ID ersetzen):
 
 ```bash
-pct exec <CTID> -- nano /opt/growthos/.env   # ADMIN_PASSWORD anpassen
-pct exec <CTID> -- systemctl restart growthos
+pct exec 150 -- nano /opt/growthos/.env   # ADMIN_PASSWORD anpassen
+pct exec 150 -- systemctl restart growthos
 ```
 
 ## Fehlersuche
 
 - Log des Installer-Laufs: `/tmp/growthos-install-*.log` auf dem Proxmox-Host
-- Ausführlicher Debug-Modus: `bash -x install/growthos.sh` (nachdem die Umgebungsvariablen wie oben gesetzt sind)
-- Logs der App selbst: `pct exec <CTID> -- journalctl -u growthos -n 100 --no-pager`
-- Health-Check von Hand: `pct exec <CTID> -- curl -sf http://localhost:8000/health`
+- Ausführlicher Debug-Modus: Skript herunterladen und mit `bash -x growthos.sh` starten (Umgebungsvariablen wie oben davorstellen)
+- Logs der App selbst: `pct exec 150 -- journalctl -u growthos -n 100 --no-pager`
+- Health-Check von Hand: `pct exec 150 -- curl -sf http://localhost:8000/health`
 
 ## Bekannter Vorbehalt
 
