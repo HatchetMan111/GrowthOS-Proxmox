@@ -242,7 +242,46 @@ create_container() {
     fi
     sleep 2
   done
-  msg_ok "Netzwerk aktiv."
+  msg_ok "IPv4-Adresse vorhanden."
+
+  # Eine IP-Adresse heisst noch nicht, dass DNS schon funktioniert (DHCP-
+  # Optionen fuer den Nameserver koennen minimal spaeter ankommen als die
+  # Adresse selbst). Getrennt und mit eigenem Timeout pruefen, statt das
+  # implizit beim ersten 'git clone' herauszufinden.
+  msg_info "Warte auf funktionierende DNS-Auflösung..."
+  tries=0
+  until pct exec "${CTID}" -- getent hosts github.com &>/dev/null; do
+    tries=$((tries + 1))
+    if [[ "${tries}" -gt 20 ]]; then
+      msg_warn "DNS-Auflösung antwortet nach 40s nicht. Aktuelle Netzwerk-Konfiguration im Container:"
+      pct exec "${CTID}" -- cat /etc/resolv.conf 2>&1 || true
+      msg_warn "Fahre trotzdem fort -- falls der spätere 'git clone' fehlschlägt, wird automatisch wiederholt."
+      break
+    fi
+    sleep 2
+  done
+  if [[ "${tries}" -le 20 ]]; then
+    msg_ok "DNS-Auflösung funktioniert."
+  fi
+}
+
+# Führt einen Befehl im Container mehrfach aus, bevor endgültig aufgegeben
+# wird -- schützt gegen kurze Netzwerk-/DNS-Aussetzer direkt nach dem
+# Container-Start (in freier Wildbahn beobachtet: 'git clone' schlug einmalig
+# mit "Could not resolve host" fehl, obwohl apt kurz zuvor funktioniert hatte).
+retry_pct_exec() {
+  local attempts="$1"; shift
+  local delay="$1"; shift
+  local n=0
+  until pct exec "${CTID}" -- "$@"; do
+    n=$((n + 1))
+    if [[ "${n}" -ge "${attempts}" ]]; then
+      return 1
+    fi
+    msg_warn "Befehl fehlgeschlagen (Versuch ${n}/${attempts}), erneuter Versuch in ${delay}s..."
+    sleep "${delay}"
+  done
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -253,6 +292,7 @@ install_app() {
   pct exec "${CTID}" -- bash -c "
     set -euo pipefail
     export DEBIAN_FRONTEND=noninteractive
+    export LC_ALL=C LANGUAGE=C
     apt-get update -qq
     apt-get install -y -qq python3 python3-venv python3-pip git curl ca-certificates >/dev/null
   "
@@ -280,16 +320,30 @@ install_app() {
     git config --system --add safe.directory /opt/${APP}
   "
 
+  # retry_pct_exec statt direktem pct exec: direkt nach dem Container-Start
+  # kann DNS noch kurz hinterherhinken, selbst wenn apt kurz zuvor schon
+  # funktioniert hat (in freier Wildbahn beobachtet: "Could not resolve
+  # host: github.com"). 3 Versuche mit 8s Abstand fangen das ab.
   if [[ "${UPDATE_MODE}" -eq 1 ]] && pct exec "${CTID}" -- test -d "/opt/${APP}/.git" &>/dev/null; then
     msg_info "Bestehende Installation gefunden, aktualisiere per 'git pull'..."
-    pct exec "${CTID}" -- su -s /bin/bash "${APP}" -c "
+    if ! retry_pct_exec 3 8 su -s /bin/bash "${APP}" -c "
       cd /opt/${APP} && git fetch --quiet && git checkout ${GH_BRANCH} --quiet && git pull --quiet
-    "
+    "; then
+      msg_error "git pull ist nach 3 Versuchen fehlgeschlagen. DNS-Diagnose:"
+      pct exec "${CTID}" -- cat /etc/resolv.conf 2>&1 || true
+      pct exec "${CTID}" -- getent hosts github.com 2>&1 || true
+      exit 1
+    fi
   else
     msg_info "Klone ${GH_REPO} (Branch ${GH_BRANCH})..."
-    pct exec "${CTID}" -- su -s /bin/bash "${APP}" -c "
+    if ! retry_pct_exec 3 8 su -s /bin/bash "${APP}" -c "
       git clone --quiet --branch ${GH_BRANCH} ${GH_REPO} /opt/${APP}
-    "
+    "; then
+      msg_error "git clone ist nach 3 Versuchen fehlgeschlagen. DNS-Diagnose:"
+      pct exec "${CTID}" -- cat /etc/resolv.conf 2>&1 || true
+      pct exec "${CTID}" -- getent hosts github.com 2>&1 || true
+      exit 1
+    fi
   fi
 
   msg_info "Lege .env an (falls noch nicht vorhanden)..."
