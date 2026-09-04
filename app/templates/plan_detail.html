@@ -20,4 +20,7 @@
 </div>
 
 <a href="/plans" class="btn btn-secondary">Zurück zur Übersicht</a>
+<form method="post" action="/plans/{{ plan.id }}/delete" onsubmit="return confirm('Plan wirklich löschen?')" style="display:inline">
+  <button type="submit" class="btn-danger" style="margin-left:8px">Plan löschen</button>
+</form>
 {% endblock %}

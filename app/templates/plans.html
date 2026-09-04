@@ -30,6 +30,9 @@
         <a href="/plans/{{ p.id }}">{{ p.title }}</a>
         <div class="meta">{{ p.created_at[:16] | replace("T", " ") }}</div>
       </div>
+      <form method="post" action="/plans/{{ p.id }}/delete" onsubmit="return confirm('Plan wirklich löschen?')">
+        <button type="submit" class="btn-danger">Löschen</button>
+      </form>
     </div>
     {% endfor %}
   {% else %}

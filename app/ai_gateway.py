@@ -52,7 +52,10 @@ def _log_usage(tokens: int, model: str, purpose: str) -> None:
 
 
 def _check_cap() -> None:
-    cap = int(get_setting("daily_token_cap", "0") or "0")
+    try:
+        cap = int(get_setting("daily_token_cap", "0") or "0")
+    except (TypeError, ValueError):
+        cap = 0  # korrupter Wert -> kein Limit statt 500er
     if cap <= 0:
         return  # 0 == kein Limit gesetzt
     used = tokens_used_today()
@@ -61,6 +64,26 @@ def _check_cap() -> None:
             f"Tages-Token-Limit erreicht ({used}/{cap} Tokens). "
             "Limit unter Einstellungen anpassen oder morgen weitermachen."
         )
+
+
+def _extract_tokens(usage: dict) -> int:
+    """Manche Router liefern kein total_tokens, sondern nur
+    prompt_tokens + completion_tokens. Fallback summieren, sonst
+    würde die Nutzung als 0 geloggt und das Tages-Limit umgangen."""
+    if not isinstance(usage, dict):
+        return 0
+    total = usage.get("total_tokens")
+    try:
+        if total is not None:
+            return int(total)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(usage.get("prompt_tokens") or 0) + int(
+            usage.get("completion_tokens") or 0
+        )
+    except (TypeError, ValueError):
+        return 0
 
 
 async def call_model(
@@ -82,7 +105,13 @@ async def call_model(
             "Omniroute-Key eintragen."
         )
     base_url = get_setting("base_url", DEFAULT_BASE_URL).rstrip("/")
-    request_max_tokens = max_tokens or int(get_setting("max_tokens_per_request", "2000"))
+    try:
+        request_max_tokens = max_tokens or int(
+            get_setting("max_tokens_per_request", "2000")
+        )
+    except (TypeError, ValueError):
+        request_max_tokens = 2000
+    request_max_tokens = max(100, min(request_max_tokens, 32000))
 
     payload = {
         "model": model,
@@ -90,11 +119,18 @@ async def call_model(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
+        # max_tokens (klassisch) + max_completion_tokens (neue Reasoning-Modelle):
+        # Unbekannte Felder ignorieren OpenAI-kompatible Router, fehlende
+        # Felder führen bei manchen Modellen zu unbegrenzt langen Antworten.
         "max_tokens": request_max_tokens,
+        "max_completion_tokens": request_max_tokens,
     }
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
+        # OpenRouter-Empfehlung: ohne Referer/Titel wird stärker rate-limitiert.
+        "HTTP-Referer": "https://localhost/",
+        "X-Title": "growthOS",
     }
 
     try:
@@ -117,14 +153,59 @@ async def call_model(
         data = resp.json()
         content = data["choices"][0]["message"]["content"]
         usage = data.get("usage", {})
-    except (KeyError, IndexError, json.JSONDecodeError) as exc:
+    except (KeyError, IndexError, json.JSONDecodeError, TypeError) as exc:
         raise AIGatewayError(
             f"Unerwartetes Antwortformat vom Modell-Anbieter: {resp.text[:1000]}"
         ) from exc
 
-    tokens = int(usage.get("total_tokens", 0))
+    if not content or not isinstance(content, str):
+        raise AIGatewayError(
+            "Leere Antwort vom Modell-Anbieter erhalten. "
+            "Ggf. anderes Modell wählen oder erneut versuchen."
+        )
+
+    tokens = _extract_tokens(usage)
     _log_usage(tokens, model, purpose)
     return content, usage
+
+
+def _normalize_steps(parsed, fallback_title_prefix="Schritt") -> list[dict] | None:
+    """Akzeptiert Liste ODER Dict-Wrapper ({"steps": [...]}, {"plan": [...]},
+    {"items": [...]}), wie ihn manche Modelle trotz Array-Anweisung liefern.
+    Gibt None zurück, wenn nichts Brauchbares dabei ist."""
+    if isinstance(parsed, dict):
+        for key in ("steps", "plan", "items", "schritte"):
+            if isinstance(parsed.get(key), list):
+                parsed = parsed[key]
+                break
+        else:
+            return None
+    if not isinstance(parsed, list):
+        return None
+    steps = []
+    for i, s in enumerate(parsed):
+        if isinstance(s, str):
+            steps.append({"title": s[:120], "description": ""})
+        elif isinstance(s, dict):
+            steps.append(
+                {
+                    "title": str(
+                        s.get("title") or s.get("titel") or s.get("name")
+                        or f"{fallback_title_prefix} {i + 1}"
+                    ),
+                    "description": str(
+                        s.get("description") or s.get("beschreibung")
+                        or s.get("text") or s.get("content") or ""
+                    ),
+                }
+            )
+    return steps or None
+
+
+def _strip_code_fences(text: str) -> str:
+    """Entfernt ```json ... ```-Zäune, die Modelle gern um JSON legen."""
+    m = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL | re.IGNORECASE)
+    return m.group(1).strip() if m else text
 
 
 def parse_plan_steps(raw_text: str) -> list[dict]:
@@ -132,27 +213,21 @@ def parse_plan_steps(raw_text: str) -> list[dict]:
     Fällt robust auf Rohtext zurück, falls das Modell kein sauberes JSON liefert
     -- nichts geht verloren, es wird nur nicht in Einzelschritte zerlegt."""
 
-    text = raw_text.strip()
+    text = _strip_code_fences(raw_text.strip())
     try:
-        parsed = json.loads(text)
-        if isinstance(parsed, list):
-            return [
-                {"title": str(s.get("title", f"Schritt {i+1}")), "description": str(s.get("description", ""))}
-                for i, s in enumerate(parsed)
-            ]
+        steps = _normalize_steps(json.loads(text))
+        if steps:
+            return steps
     except json.JSONDecodeError:
         pass
 
-    match = re.search(r"\[.*\]", text, re.DOTALL)
+    match = re.search(r"\[.*\]|\{.*\}", text, re.DOTALL)
     if match:
         try:
-            parsed = json.loads(match.group(0))
-            if isinstance(parsed, list):
-                return [
-                    {"title": str(s.get("title", f"Schritt {i+1}")), "description": str(s.get("description", ""))}
-                    for i, s in enumerate(parsed)
-                ]
+            steps = _normalize_steps(json.loads(match.group(0)))
+            if steps:
+                return steps
         except json.JSONDecodeError:
             pass
 
-    return [{"title": "Antwort (nicht als Liste erkannt)", "description": text}]
+    return [{"title": "Antwort (nicht als Liste erkannt)", "description": raw_text.strip()}]

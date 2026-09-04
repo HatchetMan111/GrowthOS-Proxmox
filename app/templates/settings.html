@@ -5,6 +5,7 @@
 <p class="subtitle">Anbindung an OpenRouter, Omniroute oder einen anderen OpenAI-kompatiblen Modell-Router.</p>
 
 {% if saved %}<div class="flash">Gespeichert.</div>{% endif %}
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
 
 <form method="post" action="/settings" class="panel">
   <label for="base_url">API-Basis-URL</label>

@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS usage_log (
     model TEXT DEFAULT '',
     purpose TEXT DEFAULT ''
 );
+
+CREATE INDEX IF NOT EXISTS idx_usage_log_day ON usage_log(day);
 """
 
 DEFAULT_PERSONAS = [
@@ -149,9 +151,14 @@ def init_db() -> None:
 
 @contextmanager
 def get_conn():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout=30: Plan-Generierung wartet 10-60s auf die KI, währenddessen
+    # hält kein Request eine Connection offen (Context-Manager pro Query).
+    # Trotzdem können zwei parallele POSTs kollidieren ("database is locked").
+    # 30s statt 5s Default + WAL-Mode entschärfen das für den Single-User-MVP.
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     try:
         yield conn
     finally:

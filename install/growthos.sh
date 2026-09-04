@@ -29,7 +29,10 @@ GH_BRANCH="${GH_BRANCH:-main}"
 APP_PORT="${APP_PORT:-8000}"
 
 CTID="${CTID:-}"                    # leer = automatisch nächste freie ID
-HOSTNAME="${HOSTNAME_CT:-growthos}"
+# HOSTNAME_CT ist der dokumentierte Weg; CT_HOSTNAME als Alias.
+# (Nicht einfach HOSTNAME: die Variable ist auf dem Host fast immer schon
+# gesetzt und würde sonst still den Hostnamen übernehmen.)
+CT_HOSTNAME="${HOSTNAME_CT:-${CT_HOSTNAME:-growthos}}"
 CORES="${CORES:-2}"
 RAM="${RAM:-1536}"                  # MB
 DISK="${DISK:-6}"                   # GB
@@ -198,7 +201,7 @@ ensure_template() {
     exit 1
   fi
 
-  if ! pveam list "${TEMPLATE_STORAGE}" 2>/dev/null | grep -q "${TEMPLATE}"; then
+  if ! pveam list "${TEMPLATE_STORAGE}" 2>/dev/null | grep -qF "${TEMPLATE}"; then
     msg_info "Lade Template ${TEMPLATE} nach '${TEMPLATE_STORAGE}' herunter..."
     pveam download "${TEMPLATE_STORAGE}" "${TEMPLATE}"
   fi
@@ -219,7 +222,7 @@ create_container() {
 
   msg_info "Lege Container ${CTID} an (${CORES} vCPU, ${RAM}MB RAM, ${DISK}GB Disk)..."
   pct create "${CTID}" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
-    --hostname "${HOSTNAME}" \
+    --hostname "${CT_HOSTNAME}" \
     --cores "${CORES}" \
     --memory "${RAM}" \
     --swap "${SWAP}" \
@@ -348,7 +351,7 @@ install_app() {
     msg_info "Bestehende Installation gefunden, aktualisiere per 'git pull'..."
     if ! retry_pct_exec 3 8 su -s /bin/bash "${APP}" -c "
       export GIT_TERMINAL_PROMPT=0
-      cd /opt/${APP} && git -c credential.helper= fetch --quiet && git checkout ${GH_BRANCH} --quiet && git -c credential.helper= pull --quiet
+      cd /opt/${APP} && git -c credential.helper= fetch --quiet && git checkout \"${GH_BRANCH}\" --quiet && git -c credential.helper= pull --ff-only --quiet
     "; then
       msg_error "git pull ist nach 3 Versuchen fehlgeschlagen."
       diagnose_git_failure
@@ -358,7 +361,7 @@ install_app() {
     msg_info "Klone ${GH_REPO} (Branch ${GH_BRANCH})..."
     if ! retry_pct_exec 3 8 su -s /bin/bash "${APP}" -c "
       export GIT_TERMINAL_PROMPT=0
-      git -c credential.helper= clone --quiet --branch ${GH_BRANCH} ${GH_REPO} /opt/${APP}
+      git -c credential.helper= clone --quiet --branch \"${GH_BRANCH}\" ${GH_REPO} /opt/${APP}
     "; then
       msg_error "git clone ist nach 3 Versuchen fehlgeschlagen."
       diagnose_git_failure
@@ -367,17 +370,49 @@ install_app() {
   fi
 
   msg_info "Lege .env an (falls noch nicht vorhanden)..."
-  pct exec "${CTID}" -- su -s /bin/bash "${APP}" -c "
-    if [[ ! -f /opt/${APP}/.env ]]; then
-      cp /opt/${APP}/.env.example /opt/${APP}/.env
-      PW='${ADMIN_PASSWORD_INPUT}'
-      if [[ -z \"\$PW\" ]]; then
-        PW=\$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')
-      fi
-      sed -i \"s#^ADMIN_PASSWORD=.*#ADMIN_PASSWORD=\${PW}#\" /opt/${APP}/.env
-      echo \"\$PW\" > /opt/${APP}/.initial_password
+  # BUGFIX: Die alte Variante baute das Passwort per
+  #   PW='${ADMIN_PASSWORD_INPUT}' + sed
+  # in einen Container-Shell-String ein. Jedes Sonderzeichen im Passwort
+  # (', $, !, #, &, Backslash, ...) zerbrach das Quoting bzw. das sed-
+  # Ersetzungsmuster. Stattdessen: Passwort auf dem HOST erzeugen, .env auf
+  # dem HOST per Python bauen und per 'pct push' in den Container schieben --
+  # so erreicht kein einziges Passwort-Zeichen je eine Shell.
+  if pct exec "${CTID}" -- test -f "/opt/${APP}/.env" &>/dev/null; then
+    msg_info ".env existiert bereits, lasse sie unverändert."
+  else
+    local pw="${ADMIN_PASSWORD_INPUT}"
+    if [[ -z "${pw}" ]]; then
+      pw="$(python3 -c 'import secrets; print(secrets.token_urlsafe(16))')"
     fi
-  "
+    local tmp_env tmp_pw
+    tmp_env="$(mktemp)"
+    tmp_pw="$(mktemp)"
+    pct exec "${CTID}" -- cat "/opt/${APP}/.env.example" > "${tmp_env}"
+    PW_VALUE="${pw}" ENV_FILE="${tmp_env}" python3 - <<'PYEOF'
+import os
+env_file = os.environ["ENV_FILE"]
+pw = os.environ["PW_VALUE"]
+with open(env_file) as f:
+    content = f.read()
+lines, replaced = [], False
+for line in content.splitlines():
+    if line.startswith("ADMIN_PASSWORD="):
+        lines.append(f"ADMIN_PASSWORD={pw}")
+        replaced = True
+    else:
+        lines.append(line)
+if not replaced:
+    lines.append(f"ADMIN_PASSWORD={pw}")
+with open(env_file, "w") as f:
+    f.write("\n".join(lines) + "\n")
+PYEOF
+    printf '%s' "${pw}" > "${tmp_pw}"
+    pct push "${CTID}" "${tmp_env}" "/opt/${APP}/.env" --perms 600
+    pct push "${CTID}" "${tmp_pw}" "/opt/${APP}/.initial_password" --perms 600
+    rm -f "${tmp_env}" "${tmp_pw}"
+    unset pw tmp_env tmp_pw
+    pct exec "${CTID}" -- bash -c "chown ${APP}:${APP} /opt/${APP}/.env /opt/${APP}/.initial_password"
+  fi
 
   msg_info "Baue Python-Umgebung und installiere Abhängigkeiten..."
   pct exec "${CTID}" -- su -s /bin/bash "${APP}" -c "

@@ -20,6 +20,8 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ReadWritePaths=/opt/growthos/app/data
 ProtectHome=true
+# DB enthält API-Key + Session-Secret: neue Dateien nur für growthos lesbar
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

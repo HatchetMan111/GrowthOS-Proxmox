@@ -4,6 +4,8 @@
 <h1>KI-Rollen</h1>
 <p class="subtitle">Jede Rolle ist ein eigener System-Prompt plus Modellwahl. Sechs sind vorkonfiguriert, du kannst beliebig weitere anlegen oder anpassen.</p>
 
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
 <div class="panel">
   {% for p in personas %}
   <div class="list-item">
@@ -11,8 +13,22 @@
       <strong>{{ p.name }}</strong>
       {% if p.description %}<div class="meta">{{ p.description }}</div>{% endif %}
       <div class="meta">Modell: <code>{{ p.model }}</code></div>
+      <details>
+        <summary class="meta" style="cursor:pointer">Bearbeiten</summary>
+        <form method="post" action="/personas/{{ p.id }}/update" class="panel" style="margin:12px 0 4px 0">
+          <label>Name</label>
+          <input type="text" name="name" value="{{ p.name }}" required>
+          <label>Kurzbeschreibung</label>
+          <input type="text" name="description" value="{{ p.description or '' }}">
+          <label>System-Prompt</label>
+          <textarea name="system_prompt" required style="min-height:100px">{{ p.system_prompt }}</textarea>
+          <label>Modell</label>
+          <input type="text" name="model" value="{{ p.model }}">
+          <button type="submit">Änderungen speichern</button>
+        </form>
+      </details>
     </div>
-    <form method="post" action="/personas/{{ p.id }}/delete" onsubmit="return confirm('Rolle wirklich löschen?')">
+    <form method="post" action="/personas/{{ p.id }}/delete" onsubmit="return confirm('Rolle wirklich löschen? Zugehörige Pläne bleiben erhalten.')">
       <button type="submit" class="btn-danger">Löschen</button>
     </form>
   </div>

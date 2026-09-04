@@ -28,7 +28,7 @@
     <div class="list-item">
       <div>
         <a href="/plans/{{ p.id }}">{{ p.title }}</a>
-        <div class="meta">{{ p.created_at[:16] | replace("T", " ") }}</div>
+        <div class="meta">{{ p.created_at[:16] | replace("T", " ") }}{% if p.persona_name %} · {{ p.persona_name }}{% endif %}</div>
       </div>
     </div>
     {% endfor %}
